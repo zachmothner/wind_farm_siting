@@ -1,0 +1,1368 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Renewable Energy Siting — Digital Twin Demo</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-primary: #0a0f1a;
+        --bg-panel: #111827;
+        --bg-card: #1a2235;
+        --border: #2a3550;
+        --text-primary: #e8ecf4;
+        --text-muted: #8892a8;
+        --accent-wind: #38bdf8;
+        --accent-yellow: #fbbf24;
+        --accent-green: #34d399;
+        --accent-red: #f87171;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "DM Sans", sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 24px;
+        background: var(--bg-panel);
+        border-bottom: 1px solid var(--border);
+        z-index: 1000;
+        flex-shrink: 0;
+      }
+      .logo-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo-icon {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(
+          135deg,
+          var(--accent-wind),
+          var(--accent-green)
+        );
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 16px;
+      }
+      header h1 {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      header h1 span {
+        color: var(--text-muted);
+        font-weight: 400;
+      }
+      .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .layer-btn {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-family: "DM Sans", sans-serif;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .layer-btn:hover {
+        border-color: var(--text-muted);
+        color: var(--text-primary);
+      }
+      .layer-btn.active {
+        border-color: var(--accent-wind);
+        color: var(--accent-wind);
+        background: rgba(56, 189, 248, 0.08);
+      }
+      .layer-btn.active[data-layer="elevation"] {
+        border-color: #a78bfa;
+        color: #a78bfa;
+        background: rgba(167, 139, 250, 0.08);
+      }
+      .layer-btn.active[data-layer="suitability"] {
+        border-color: var(--accent-green);
+        color: var(--accent-green);
+        background: rgba(52, 211, 153, 0.08);
+      }
+      .layer-btn.active[data-layer="cf"] {
+        border-color: #f472b6;
+        color: #f472b6;
+        background: rgba(244, 114, 182, 0.08);
+      }
+      .layer-btn.active[data-layer="lcoe"] {
+        border-color: #fb923c;
+        color: #fb923c;
+        background: rgba(251, 146, 60, 0.08);
+      }
+      .layer-btn.active[data-layer="constraints"] {
+        border-color: #ef4444;
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.08);
+      }
+      .layer-btn.active[data-layer="slope"] {
+        border-color: #94a3b8;
+        color: #94a3b8;
+        background: rgba(148, 163, 184, 0.08);
+      }
+      .layer-btn.active[data-layer="co2"] {
+        border-color: #34d399;
+        color: #34d399;
+        background: rgba(52, 211, 153, 0.08);
+      }
+      .layer-btn.active[data-layer="resDist"] {
+        border-color: #c084fc;
+        color: #c084fc;
+        background: rgba(192, 132, 252, 0.08);
+      }
+      .layer-btn.active[data-layer="gridDist"] {
+        border-color: #22d3ee;
+        color: #22d3ee;
+        background: rgba(34, 211, 238, 0.08);
+      }
+      .layer-btn.active[data-layer="habitat"] {
+        border-color: #4ade80;
+        color: #4ade80;
+        background: rgba(74, 222, 128, 0.08);
+      }
+      .main-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+      #map {
+        flex: 1;
+        background: var(--bg-primary);
+      }
+      .sidebar {
+        width: 320px;
+        flex-shrink: 0;
+        background: var(--bg-panel);
+        border-left: 1px solid var(--border);
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .sidebar h2 {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+      }
+      .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .stat-card .label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+      }
+      .stat-card .value {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 26px;
+        font-weight: 500;
+      }
+      .stat-card .sub {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+      .legend {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .legend-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .cell-detail {
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .cell-detail.visible {
+        display: flex;
+      }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+      }
+      .detail-row:last-child {
+        border-bottom: none;
+      }
+      .detail-row .dlabel {
+        color: var(--text-muted);
+      }
+      .detail-row .dvalue {
+        font-family: "JetBrains Mono", monospace;
+        font-weight: 500;
+      }
+      .suitability-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .suit-high {
+        background: rgba(52, 211, 153, 0.15);
+        color: var(--accent-green);
+      }
+      .suit-medium {
+        background: rgba(251, 191, 36, 0.15);
+        color: var(--accent-yellow);
+      }
+      .suit-low {
+        background: rgba(248, 113, 113, 0.15);
+        color: var(--accent-red);
+      }
+      .leaflet-container {
+        background: var(--bg-primary) !important;
+      }
+      .leaflet-control-zoom a {
+        background: var(--bg-card) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border) !important;
+      }
+      .leaflet-control-attribution {
+        background: rgba(17, 24, 39, 0.85) !important;
+        color: var(--text-muted) !important;
+        font-size: 10px !important;
+      }
+      .leaflet-control-attribution a {
+        color: var(--text-muted) !important;
+      }
+      #tooltip {
+        position: fixed;
+        pointer-events: none;
+        z-index: 2000;
+        display: none;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        padding: 6px 10px;
+        border-radius: 6px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      }
+      .zoom-hint {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 12px;
+        z-index: 1000;
+        pointer-events: none;
+        transition: opacity 0.3s;
+      }
+      @media (max-width: 900px) {
+        .sidebar {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="logo-group">
+        <div class="logo-icon">⚡</div>
+        <h1>GridSight <span>/ Renewable Energy Siting</span></h1>
+      </div>
+      <div class="header-controls">
+        <button
+          class="layer-btn active"
+          data-layer="elevation"
+          onclick="setLayer('elevation')"
+        >
+          Elevation
+        </button>
+        <button class="layer-btn" data-layer="wind" onclick="setLayer('wind')">
+          Wind
+        </button>
+        <button class="layer-btn" data-layer="cf" onclick="setLayer('cf')">
+          Capacity Factor
+        </button>
+        <button class="layer-btn" data-layer="lcoe" onclick="setLayer('lcoe')">
+          LCOE
+        </button>
+        <button
+          class="layer-btn"
+          data-layer="constraints"
+          onclick="setLayer('constraints')"
+        >
+          Protected Areas
+        </button>
+        <button
+          class="layer-btn"
+          data-layer="slope"
+          onclick="setLayer('slope')"
+        >
+          Slope
+        </button>
+        <button class="layer-btn" data-layer="co2" onclick="setLayer('co2')">
+          CO₂ Saved
+        </button>
+        <button
+          class="layer-btn"
+          data-layer="resDist"
+          onclick="setLayer('resDist')"
+        >
+          Residential
+        </button>
+        <button
+          class="layer-btn"
+          data-layer="gridDist"
+          onclick="setLayer('gridDist')"
+        >
+          Grid Access
+        </button>
+        <button
+          class="layer-btn"
+          data-layer="habitat"
+          onclick="setLayer('habitat')"
+        >
+          Biodiversity
+        </button>
+        <!-- <button
+          class="layer-btn"
+          data-layer="suitability"
+          onclick="setLayer('suitability')"
+        >
+          Suitability
+        </button> -->
+      </div>
+    </header>
+
+    <div class="main-container">
+      <div id="map"></div>
+      <div id="tooltip"></div>
+      <div class="sidebar">
+        <h2>Overview</h2>
+        <div class="stat-card">
+          <div class="label">Resolution</div>
+          <div class="value">~1 km</div>
+          <div class="sub">0.01° × 0.01° grid cells</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Coverage</div>
+          <div class="value">~213k</div>
+          <div class="sub">Land cells across England & Wales</div>
+        </div>
+        <h2>Legend</h2>
+        <div class="legend" id="legend"></div>
+        <h2>Selected Cell</h2>
+        <div class="cell-detail" id="cell-detail">
+          <div class="stat-card">
+            <div class="detail-row">
+              <span class="dlabel">Grid Ref</span
+              ><span class="dvalue" id="d-ref">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Wind Speed</span
+              ><span class="dvalue" id="d-wind">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Elevation</span
+              ><span class="dvalue" id="d-elev">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Capacity Factor</span
+              ><span class="dvalue" id="d-cf">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">LCOE</span
+              ><span class="dvalue" id="d-lcoe">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Protected Status</span
+              ><span class="dvalue" id="d-constraints">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Slope</span
+              ><span class="dvalue" id="d-slope">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">CO₂ Displaced</span
+              ><span class="dvalue" id="d-co2">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Nearest Settlement</span
+              ><span class="dvalue" id="d-resDist">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Nearest Grid Point</span
+              ><span class="dvalue" id="d-gridDist">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Priority Habitat</span
+              ><span class="dvalue" id="d-habitat">—</span>
+            </div>
+            <!-- <div class="detail-row">
+              <span class="dlabel">Suitability</span
+              ><span class="dvalue" id="d-suit">—</span>
+            </div> -->
+          </div>
+        </div>
+        <div
+          id="cell-placeholder"
+          class="stat-card"
+          style="
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 13px;
+            padding: 28px 16px;
+          "
+        >
+          Click a grid cell on the map to inspect its data
+        </div>
+      </div>
+    </div>
+
+    <script src="grid_data_embedded.js"></script>
+    <script>
+      // ── England+Wales boundary polygon [lng, lat] from ONS data ──
+      const ENGLAND_POLY = [
+        [-3.0473, 51.5002],
+        [-3.1682, 51.3804],
+        [-3.3412, 51.3598],
+        [-3.5582, 51.3769],
+        [-3.756, 51.4763],
+        [-3.8438, 51.5839],
+        [-3.9235, 51.5788],
+        [-3.9372, 51.5463],
+        [-4.2586, 51.5207],
+        [-4.3575, 51.5634],
+        [-4.3547, 51.6231],
+        [-4.3904, 51.6896],
+        [-4.5497, 51.7185],
+        [-4.6596, 51.6998],
+        [-4.6568, 51.6214],
+        [-4.8546, 51.618],
+        [-4.8985, 51.5754],
+        [-5.11, 51.6061],
+        [-5.1018, 51.6368],
+        [-5.2391, 51.6811],
+        [-5.2803, 51.6709],
+        [-5.338, 51.6981],
+        [-5.3352, 51.7542],
+        [-5.1567, 51.7967],
+        [-5.1485, 51.8443],
+        [-5.2803, 51.8527],
+        [-5.3709, 51.8358],
+        [-5.3847, 51.8765],
+        [-5.3242, 51.929],
+        [-5.1237, 51.9866],
+        [-5.1045, 52.0373],
+        [-5.0441, 52.0508],
+        [-4.9699, 52.039],
+        [-4.8134, 52.0778],
+        [-4.7749, 52.1217],
+        [-4.6898, 52.147],
+        [-4.5442, 52.1621],
+        [-4.3657, 52.2362],
+        [-4.2888, 52.253],
+        [-4.1542, 52.3773],
+        [-4.0938, 52.5129],
+        [-4.1652, 52.603],
+        [-4.1624, 52.6581],
+        [-4.0938, 52.7097],
+        [-4.1762, 52.8011],
+        [-4.1624, 52.8492],
+        [-4.1927, 52.8857],
+        [-4.2723, 52.8874],
+        [-4.4481, 52.8376],
+        [-4.4344, 52.8077],
+        [-4.525, 52.7612],
+        [-4.6074, 52.8028],
+        [-4.8216, 52.7263],
+        [-4.8436, 52.7629],
+        [-4.7585, 52.8724],
+        [-4.6623, 52.947],
+        [-4.5525, 52.9768],
+        [-4.4261, 53.033],
+        [-4.3739, 53.0858],
+        [-4.5085, 53.1517],
+        [-4.5717, 53.2093],
+        [-4.731, 53.2816],
+        [-4.7365, 53.321],
+        [-4.6788, 53.3473],
+        [-4.6129, 53.3342],
+        [-4.5992, 53.4226],
+        [-4.4371, 53.4423],
+        [-4.3217, 53.439],
+        [-4.2393, 53.4194],
+        [-4.1789, 53.3194],
+        [-4.091, 53.3407],
+        [-3.896, 53.303],
+        [-3.918, 53.3456],
+        [-3.8576, 53.3587],
+        [-3.6955, 53.3161],
+        [-3.5637, 53.3194],
+        [-3.3549, 53.3751],
+        [-3.2973, 53.3768],
+        [-3.2121, 53.3309],
+        [-3.2616, 53.3981],
+        [-3.0968, 53.4717],
+        [-3.1572, 53.5468],
+        [-3.1325, 53.5941],
+        [-2.9897, 53.7113],
+        [-3.0885, 53.7341],
+        [-3.105, 53.786],
+        [-3.0775, 53.927],
+        [-3.0254, 53.9496],
+        [-2.9265, 53.9625],
+        [-2.9512, 54.0336],
+        [-2.8633, 54.1126],
+        [-2.8743, 54.1624],
+        [-2.943, 54.1367],
+        [-3.0418, 54.1351],
+        [-3.0528, 54.0916],
+        [-3.1627, 54.0352],
+        [-3.2368, 54.0304],
+        [-3.3138, 54.0932],
+        [-3.3055, 54.1576],
+        [-3.3907, 54.2026],
+        [-3.4923, 54.3005],
+        [-3.4813, 54.3454],
+        [-3.679, 54.4988],
+        [-3.6681, 54.5418],
+        [-3.5472, 54.7436],
+        [-3.495, 54.7738],
+        [-3.4621, 54.8529],
+        [-3.3138, 54.9587],
+        [-3.149, 54.9516],
+        [-3.1187, 54.9721],
+        [-3.0721, 54.9697],
+        [-3.0267, 55.0343],
+        [-3.0487, 55.0563],
+        [-2.9622, 55.0516],
+        [-2.851, 55.1106],
+        [-2.8317, 55.1318],
+        [-2.6985, 55.1765],
+        [-2.6683, 55.2204],
+        [-2.6353, 55.2228],
+        [-2.6244, 55.2502],
+        [-2.6436, 55.2572],
+        [-2.5584, 55.3151],
+        [-2.5227, 55.3229],
+        [-2.4815, 55.3534],
+        [-2.4376, 55.3604],
+        [-2.395, 55.3487],
+        [-2.3415, 55.3666],
+        [-2.3415, 55.3994],
+        [-2.2549, 55.4329],
+        [-2.1959, 55.4399],
+        [-2.1877, 55.4617],
+        [-2.1671, 55.4703],
+        [-2.1986, 55.4781],
+        [-2.2385, 55.555],
+        [-2.292, 55.5799],
+        [-2.2893, 55.6016],
+        [-2.314, 55.6156],
+        [-2.3099, 55.628],
+        [-2.3346, 55.6303],
+        [-2.3209, 55.6474],
+        [-2.2316, 55.6419],
+        [-2.2398, 55.6551],
+        [-2.1698, 55.7055],
+        [-2.1725, 55.7201],
+        [-2.1176, 55.7387],
+        [-2.1066, 55.7596],
+        [-2.086, 55.7658],
+        [-2.0874, 55.792],
+        [-2.0174, 55.8213],
+        [-1.869, 55.707],
+        [-1.7729, 55.7024],
+        [-1.74, 55.6543],
+        [-1.5971, 55.5473],
+        [-1.5367, 55.4275],
+        [-1.5697, 55.3729],
+        [-1.5257, 55.3463],
+        [-1.5367, 55.2807],
+        [-1.4626, 55.193],
+        [-1.49, 55.1538],
+        [-1.3252, 54.9618],
+        [-1.3252, 54.9066],
+        [-1.2621, 54.8276],
+        [-1.2428, 54.7611],
+        [-1.133, 54.7088],
+        [-1.122, 54.6611],
+        [-0.7072, 54.5609],
+        [-0.526, 54.4589],
+        [-0.2129, 54.201],
+        [-0.0343, 54.1319],
+        [-0.0618, 54.0916],
+        [-0.1607, 54.0691],
+        [-0.1744, 54.0045],
+        [0.1332, 53.6739],
+        [0.1826, 53.6007],
+        [0.1634, 53.5729],
+        [0.0343, 53.5892],
+        [0.0591, 53.5468],
+        [0.1881, 53.5028],
+        [0.2953, 53.3702],
+        [0.4161, 53.1336],
+        [0.3667, 53.0676],
+        [0.1717, 52.9933],
+        [0.1112, 52.9238],
+        [0.2046, 52.889],
+        [0.2705, 52.8409],
+        [0.3612, 52.8476],
+        [0.4683, 52.9751],
+        [0.6276, 53.0016],
+        [1.0561, 52.9883],
+        [1.273, 52.9619],
+        [1.7152, 52.7513],
+        [1.7921, 52.5997],
+        [1.7867, 52.4577],
+        [1.6631, 52.2682],
+        [1.6054, 52.0761],
+        [1.4928, 52.0255],
+        [1.328, 51.907],
+        [1.3417, 51.851],
+        [1.2016, 51.7695],
+        [1.089, 51.7474],
+        [0.9874, 51.7508],
+        [0.9737, 51.6896],
+        [0.9792, 51.6129],
+        [0.8775, 51.531],
+        [0.7759, 51.5019],
+        [0.7567, 51.4694],
+        [0.8968, 51.4352],
+        [0.9682, 51.3992],
+        [0.9929, 51.3649],
+        [1.0616, 51.3924],
+        [1.3884, 51.4095],
+        [1.4708, 51.3906],
+        [1.4763, 51.3512],
+        [1.4131, 51.3031],
+        [1.4241, 51.1483],
+        [1.2209, 51.0569],
+        [1.0945, 51.0379],
+        [1.0066, 50.9947],
+        [1.0121, 50.9411],
+        [1.0011, 50.8961],
+        [0.7567, 50.903],
+        [0.6029, 50.8233],
+        [0.3859, 50.8059],
+        [0.2705, 50.7139],
+        [-0.1772, 50.8077],
+        [-0.7127, 50.7504],
+        [-0.7869, 50.7052],
+        [-0.938, 50.759],
+        [-1.089, 50.7521],
+        [-1.0835, 50.7208],
+        [-1.0423, 50.6912],
+        [-1.1357, 50.6286],
+        [-1.1632, 50.5832],
+        [-1.3252, 50.5483],
+        [-1.4268, 50.6129],
+        [-1.5367, 50.646],
+        [-1.6383, 50.646],
+        [-1.6026, 50.6912],
+        [-1.6905, 50.7052],
+        [-1.7812, 50.6773],
+        [-1.8855, 50.6721],
+        [-1.9405, 50.578],
+        [-2.0833, 50.5536],
+        [-2.1574, 50.585],
+        [-2.4211, 50.6076],
+        [-2.4239, 50.5815],
+        [-2.3799, 50.5536],
+        [-2.4651, 50.4925],
+        [-2.4898, 50.5099],
+        [-2.4898, 50.5536],
+        [-2.682, 50.6477],
+        [-2.7974, 50.6999],
+        [-2.9045, 50.6999],
+        [-3.2314, 50.6477],
+        [-3.2808, 50.6146],
+        [-3.4181, 50.5832],
+        [-3.4731, 50.5169],
+        [-3.4758, 50.4907],
+        [-3.4401, 50.4715],
+        [-3.4401, 50.4365],
+        [-3.528, 50.433],
+        [-3.4621, 50.3998],
+        [-3.4978, 50.3332],
+        [-3.6131, 50.2858],
+        [-3.6241, 50.2085],
+        [-3.7065, 50.1804],
+        [-3.929, 50.2279],
+        [-3.9098, 50.2595],
+        [-4.1487, 50.3034],
+        [-4.2421, 50.2858],
+        [-4.33, 50.3384],
+        [-4.4069, 50.3332],
+        [-4.4618, 50.3069],
+        [-4.709, 50.3034],
+        [-4.7392, 50.249],
+        [-4.7859, 50.2015],
+        [-4.8628, 50.1962],
+        [-5.0468, 50.0906],
+        [-5.0359, 50.0554],
+        [-5.088, 49.9795],
+        [-5.1457, 49.9724],
+        [-5.1787, 49.9388],
+        [-5.2638, 49.9388],
+        [-5.3352, 50.0501],
+        [-5.4863, 50.0977],
+        [-5.5165, 50.0607],
+        [-5.5989, 50.0289],
+        [-5.7033, 50.0148],
+        [-5.7417, 50.0607],
+        [-5.7115, 50.1681],
+        [-5.6126, 50.2156],
+        [-5.511, 50.2437],
+        [-5.4396, 50.2261],
+        [-5.3792, 50.2683],
+        [-5.2693, 50.3034],
+        [-5.2501, 50.3472],
+        [-5.1787, 50.3612],
+        [-5.1759, 50.426],
+        [-5.0798, 50.4627],
+        [-5.0523, 50.5571],
+        [-4.9205, 50.6146],
+        [-4.8106, 50.6373],
+        [-4.7722, 50.6947],
+        [-4.5827, 50.8129],
+        [-4.6019, 50.929],
+        [-4.5689, 50.9775],
+        [-4.5552, 51.0466],
+        [-4.4563, 51.0397],
+        [-4.3712, 51.0138],
+        [-4.2943, 51.0483],
+        [-4.2558, 51.0932],
+        [-4.297, 51.1483],
+        [-4.2201, 51.2396],
+        [-3.8878, 51.2533],
+        [-3.5115, 51.2499],
+        [-3.3989, 51.2189],
+        [-3.2561, 51.2155],
+        [-3.1654, 51.2344],
+        [-3.0611, 51.2344],
+        [-3.0473, 51.2946],
+        [-3.0556, 51.3358],
+        [-2.9897, 51.4095],
+        [-2.7425, 51.5378],
+        [-3.0473, 51.5002],
+      ];
+
+      // ── Point-in-polygon (ray casting) ──
+      function pointInPoly(lat, lng) {
+        let inside = false;
+        const poly = ENGLAND_POLY;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const xi = poly[i][1],
+            yi = poly[i][0],
+            xj = poly[j][1],
+            yj = poly[j][0];
+          if (
+            xi > lat !== xj > lat &&
+            lng < ((yj - yi) * (lat - xi)) / (xj - xi) + yi
+          )
+            inside = !inside;
+        }
+        return inside;
+      }
+
+      // ── Precompute a bitmask for fast containment testing ──
+      // Divide the bounding box into a coarse grid and mark cells that are inside
+      const PIP_STEP = 0.05; // ~5km coarse grid for pre-filtering
+      const PIP_LAT_MIN = 49.9,
+        PIP_LAT_MAX = 55.9,
+        PIP_LNG_MIN = -5.8,
+        PIP_LNG_MAX = 1.9;
+      const PIP_ROWS = Math.ceil((PIP_LAT_MAX - PIP_LAT_MIN) / PIP_STEP);
+      const PIP_COLS = Math.ceil((PIP_LNG_MAX - PIP_LNG_MIN) / PIP_STEP);
+      const pipCache = new Uint8Array(PIP_ROWS * PIP_COLS); // 0=unknown, 1=inside, 2=outside, 3=border
+      (function buildPipCache() {
+        for (let r = 0; r < PIP_ROWS; r++) {
+          for (let c = 0; c < PIP_COLS; c++) {
+            const lat = PIP_LAT_MIN + (r + 0.5) * PIP_STEP;
+            const lng = PIP_LNG_MIN + (c + 0.5) * PIP_STEP;
+            // Check center and corners
+            const center = pointInPoly(lat, lng);
+            const tl = pointInPoly(lat + PIP_STEP / 2, lng - PIP_STEP / 2);
+            const br = pointInPoly(lat - PIP_STEP / 2, lng + PIP_STEP / 2);
+            if (center && tl && br) pipCache[r * PIP_COLS + c] = 1;
+            else if (!center && !tl && !br) pipCache[r * PIP_COLS + c] = 2;
+            else pipCache[r * PIP_COLS + c] = 3; // border - need per-cell check
+          }
+        }
+      })();
+
+      function fastPointInPoly(lat, lng) {
+        const r = Math.floor((lat - PIP_LAT_MIN) / PIP_STEP);
+        const c = Math.floor((lng - PIP_LNG_MIN) / PIP_STEP);
+        if (r < 0 || r >= PIP_ROWS || c < 0 || c >= PIP_COLS) return false;
+        const v = pipCache[r * PIP_COLS + c];
+        if (v === 1) return true;
+        if (v === 2) return false;
+        return pointInPoly(lat, lng); // border cell - precise check
+      }
+
+      // ── Data generation (deterministic per cell) ──
+      const GRID_STEP = 0.01;
+
+      function generateCellData(lat, lng) {
+        const key = lat + "," + lng;
+        const real =
+          typeof GRID_DATA !== "undefined" ? GRID_DATA.get(key) : null;
+
+        const elevation = real ? real.elevation : 0;
+        const wind = real ? real.wind : 0;
+        const cf = real ? real.cf || 0 : 0;
+
+        // LCOE calculation (£/MWh)
+        // DESNZ 2024 assumptions for onshore wind:
+        //   CAPEX: £1,300/kW, OPEX: £45/kW/yr, Lifetime: 25yr, Discount rate: 7.5%
+        const capex_per_kw = 1300;
+        const opex_per_kw = 45;
+        const discount_rate = 0.075;
+        const lifetime = 25;
+        const crf =
+          (discount_rate * Math.pow(1 + discount_rate, lifetime)) /
+          (Math.pow(1 + discount_rate, lifetime) - 1);
+        const annual_cost_per_kw = capex_per_kw * crf + opex_per_kw;
+        const annual_mwh_per_kw = (cf * 8760) / 1000; // MWh per kW of capacity
+        const lcoe =
+          annual_mwh_per_kw > 0 ? annual_cost_per_kw / annual_mwh_per_kw : 999;
+        const constraints = real ? real.constraints || 0 : 0;
+
+        // Slope: compute from elevation difference to neighbors (~0.01° apart)
+        // Check east and north neighbors
+        const eKey = lat + "," + +(lng + GRID_STEP).toFixed(4);
+        const nKey = +(lat + GRID_STEP).toFixed(4) + "," + lng;
+        const eData =
+          typeof GRID_DATA !== "undefined" ? GRID_DATA.get(eKey) : null;
+        const nData =
+          typeof GRID_DATA !== "undefined" ? GRID_DATA.get(nKey) : null;
+
+        const cellSizeM = GRID_STEP * 111000; // ~1110m per 0.01°
+        const dElev_e = eData ? Math.abs(eData.elevation - elevation) : 0;
+        const dElev_n = nData ? Math.abs(nData.elevation - elevation) : 0;
+        const maxRise = Math.max(dElev_e, dElev_n);
+        const slopeDeg = Math.atan(maxRise / cellSizeM) * (180 / Math.PI);
+
+        const co2 = real ? real.co2 || 0 : 0;
+        const resDist = real ? real.resDist || 0 : 0;
+        const gridDist = real ? real.gridDist || 0 : 0;
+        const habitat = real ? real.habitat || 0 : 0;
+
+        return {
+          lat,
+          lng,
+          wind: +wind.toFixed(1),
+          elevation,
+          cf,
+          lcoe: +lcoe.toFixed(1),
+          constraints,
+          slope: +slopeDeg.toFixed(1),
+          co2,
+          resDist,
+          gridDist,
+          habitat,
+        };
+      }
+
+      // ── Color functions ──
+      function windColorRGB(v) {
+        // Actual range: 5.1-10.1, 90% between 6.5-8.2
+        const t = Math.min(1, Math.max(0, (v - 6.0) / 3.0));
+        const r = Math.round(20 + t * 36);
+        const g = Math.round(100 + t * 89);
+        const b = Math.round(180 + t * 68);
+        const a = 0.25 + t * 0.65;
+        return [r, g, b, a];
+      }
+      function suitColorRGB(v) {
+        if (v >= 75) return [52, 211, 153, 0.3 + ((v - 75) / 25) * 0.55];
+        if (v >= 45) return [251, 191, 36, 0.2 + ((v - 45) / 30) * 0.35];
+        return [248, 113, 113, 0.1 + (v / 45) * 0.25];
+      }
+      function elevColorRGB(v) {
+        // Green-to-brown-to-white elevation ramp
+        const t = Math.min(1, Math.max(0, v / 800));
+        if (t < 0.3) {
+          // Low: dark green
+          const s = t / 0.3;
+          return [30 + s * 50, 120 + s * 40, 30 + s * 30, 0.3 + s * 0.3];
+        }
+        if (t < 0.7) {
+          // Mid: brown/amber
+          const s = (t - 0.3) / 0.4;
+          return [80 + s * 90, 160 - s * 60, 60 - s * 20, 0.6 + s * 0.2];
+        }
+        // High: light/white
+        const s = (t - 0.7) / 0.3;
+        return [170 + s * 60, 100 + s * 100, 40 + s * 160, 0.8 + s * 0.15];
+      }
+      function cfColorRGB(v) {
+        // Actual range: 0.19-0.49, 90% between 0.21-0.38
+        const t = Math.min(1, Math.max(0, (v - 0.19) / 0.2));
+        const r = Math.round(180 + t * 64);
+        const g = Math.round(50 + t * 64);
+        const b = Math.round(120 + t * 62);
+        const a = 0.25 + t * 0.65;
+        return [r, g, b, a];
+      }
+      function lcoeColorRGB(v) {
+        // Typical UK onshore range is ~£55-95/MWh
+        // Use a tighter scale to show variation
+        const t = Math.min(1, Math.max(0, (v - 55) / 40));
+        // green (cheap) → amber → red (expensive)
+        const r = Math.round(52 + t * 196);
+        const g = Math.round(211 - t * 98);
+        const b = Math.round(153 - t * 40);
+        const a = 0.4 + t * 0.45;
+        return [r, g, b, a];
+      }
+      function constraintColorRGB(v) {
+        if (v === 0) return [52, 211, 153, 0.25]; // green = no constraints
+        if (v & 1) return [239, 68, 68, 0.75]; // red = SSSI
+        if (v & 2) return [251, 146, 60, 0.65]; // orange = National Park
+        return [251, 191, 36, 0.55]; // amber = AONB
+      }
+      function slopeColorRGB(v) {
+        // 0-5° = flat (green/ok), 5-10° = moderate, 10-15° = steep, >15° = excluded
+        if (v < 5) return [52, 211, 153, 0.25 + (v / 5) * 0.2];
+        if (v < 10) return [251, 191, 36, 0.4 + ((v - 5) / 5) * 0.25];
+        if (v < 15) return [251, 146, 60, 0.6 + ((v - 10) / 5) * 0.2];
+        return [239, 68, 68, 0.75 + Math.min((v - 15) / 10, 1) * 0.15];
+      }
+      function co2ColorRGB(v) {
+        // Actual range: 734-1867, 90% between 809-1440
+        const t = Math.min(1, Math.max(0, (v - 750) / 700));
+        const r = Math.round(200 - t * 148);
+        const g = Math.round(120 + t * 91);
+        const b = Math.round(80 + t * 73);
+        const a = 0.3 + t * 0.55;
+        return [r, g, b, a];
+      }
+      function resDistColorRGB(v) {
+        // 0km = red (too close), 0.6-2km = amber (setback zone), 2-5km = green (ideal), >10km = blue (remote)
+        if (v < 0.6) return [239, 68, 68, 0.8];
+        if (v < 2) return [251, 146, 60, 0.6];
+        if (v < 5) return [52, 211, 153, 0.5 + ((v - 2) / 3) * 0.2];
+        return [100, 140, 200, 0.3 + Math.min((v - 5) / 15, 1) * 0.3];
+      }
+      function gridDistColorRGB(v) {
+        // Closer to grid = better (cheaper connection)
+        const t = Math.min(1, Math.max(0, v / 60));
+        const r = Math.round(34 + t * 200);
+        const g = Math.round(211 - t * 100);
+        const b = Math.round(238 - t * 100);
+        const a = 0.35 + t * 0.45;
+        return [r, g, b, a];
+      }
+      function habitatColorRGB(v) {
+        if (v === 1) return [239, 68, 68, 0.7]; // red = priority habitat present
+        return [74, 222, 128, 0.25]; // green = no priority habitat
+      }
+
+      let activeLayer = "elevation";
+      function getCellColor(cell) {
+        if (activeLayer === "elevation") return elevColorRGB(cell.elevation);
+        if (activeLayer === "wind") return windColorRGB(cell.wind);
+        if (activeLayer === "cf") return cfColorRGB(cell.cf);
+        if (activeLayer === "lcoe") return lcoeColorRGB(cell.lcoe);
+        if (activeLayer === "constraints")
+          return constraintColorRGB(cell.constraints);
+        if (activeLayer === "slope") return slopeColorRGB(cell.slope);
+        if (activeLayer === "co2") return co2ColorRGB(cell.co2);
+        if (activeLayer === "resDist") return resDistColorRGB(cell.resDist);
+        if (activeLayer === "gridDist") return gridDistColorRGB(cell.gridDist);
+        if (activeLayer === "habitat") return habitatColorRGB(cell.habitat);
+        return suitColorRGB(cell.suitability);
+      }
+
+      // ── Map setup ──
+      const map = L.map("map", {
+        center: [52.8, -1.5],
+        zoom: 7,
+        zoomControl: true,
+        minZoom: 5,
+        maxZoom: 14,
+      });
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+          subdomains: "abcd",
+          maxZoom: 19,
+        },
+      ).addTo(map);
+
+      // ── Custom Canvas Grid Layer ──
+      const GridLayer = L.GridLayer.extend({
+        createTile: function (coords) {
+          const tile = document.createElement("canvas");
+          const size = this.getTileSize();
+          tile.width = size.x;
+          tile.height = size.y;
+          const ctx = tile.getContext("2d");
+
+          const nw = this.getTileSize();
+          const tileNW = coords;
+          const zoom = coords.z;
+
+          // Get the lat/lng bounds of this tile
+          const nwPoint = L.point(coords.x * size.x, coords.y * size.y);
+          const sePoint = L.point(nwPoint.x + size.x, nwPoint.y + size.y);
+          const nwLatLng = map.unproject(nwPoint, zoom);
+          const seLatLng = map.unproject(sePoint, zoom);
+
+          const tileLngMin = nwLatLng.lng;
+          const tileLngMax = seLatLng.lng;
+          const tileLatMin = seLatLng.lat;
+          const tileLatMax = nwLatLng.lat;
+
+          // Snap to grid
+          const startLat = Math.floor(tileLatMin / GRID_STEP) * GRID_STEP;
+          const startLng = Math.floor(tileLngMin / GRID_STEP) * GRID_STEP;
+
+          for (
+            let lat = startLat;
+            lat <= tileLatMax + GRID_STEP;
+            lat += GRID_STEP
+          ) {
+            for (
+              let lng = startLng;
+              lng <= tileLngMax + GRID_STEP;
+              lng += GRID_STEP
+            ) {
+              const cLat = +(lat + GRID_STEP / 2).toFixed(4);
+              const cLng = +(lng + GRID_STEP / 2).toFixed(4);
+
+              if (!fastPointInPoly(cLat, cLng)) continue;
+
+              // Convert cell corners to pixel positions within tile
+              const nwPx = map.project([lat + GRID_STEP, lng], zoom);
+              const sePx = map.project([lat, lng + GRID_STEP], zoom);
+
+              const x = nwPx.x - nwPoint.x;
+              const y = nwPx.y - nwPoint.y;
+              const w = sePx.x - nwPx.x;
+              const h = sePx.y - nwPx.y;
+
+              const cell = generateCellData(cLat, cLng);
+              const [r, g, b, a] = getCellColor(cell);
+
+              ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(2)})`;
+              ctx.fillRect(x, y, w + 0.5, h + 0.5); // +0.5 to avoid gaps
+
+              // Cell border (only when zoomed in enough)
+              if (zoom >= 10) {
+                ctx.strokeStyle = "rgba(42,53,80,0.4)";
+                ctx.lineWidth = 0.5;
+                ctx.strokeRect(x, y, w, h);
+              }
+            }
+          }
+          return tile;
+        },
+      });
+
+      let gridLayer = new GridLayer({ opacity: 0.9 });
+      gridLayer.addTo(map);
+
+      // ── Highlight layer for selected cell ──
+      let highlightRect = null;
+
+      // ── Mouse interaction ──
+      const tooltipEl = document.getElementById("tooltip");
+
+      function getCellAtLatLng(latlng) {
+        const cellLat = +(
+          Math.floor(latlng.lat / GRID_STEP) * GRID_STEP +
+          GRID_STEP / 2
+        ).toFixed(4);
+        const cellLng = +(
+          Math.floor(latlng.lng / GRID_STEP) * GRID_STEP +
+          GRID_STEP / 2
+        ).toFixed(4);
+        if (!fastPointInPoly(cellLat, cellLng)) return null;
+        return generateCellData(cellLat, cellLng);
+      }
+
+      map.on("mousemove", function (e) {
+        const cell = getCellAtLatLng(e.latlng);
+        if (cell) {
+          const tip =
+            activeLayer === "elevation"
+              ? cell.elevation + " m"
+              : activeLayer === "wind"
+                ? cell.wind + " m/s"
+                : activeLayer === "cf"
+                  ? (cell.cf * 100).toFixed(1) + "%"
+                  : activeLayer === "lcoe"
+                    ? "£" + cell.lcoe + "/MWh"
+                    : activeLayer === "constraints"
+                      ? (cell.constraints === 0
+                          ? "No constraints"
+                          : (cell.constraints & 1 ? "SSSI" : "") +
+                            (cell.constraints & 2 ? " National Park" : "") +
+                            (cell.constraints & 4 ? " AONB" : "")
+                        ).trim()
+                      : activeLayer === "slope"
+                        ? cell.slope + "°"
+                        : activeLayer === "co2"
+                          ? cell.co2.toLocaleString() + " t/yr"
+                          : activeLayer === "resDist"
+                            ? cell.resDist.toFixed(1) + " km"
+                            : activeLayer === "gridDist"
+                              ? cell.gridDist.toFixed(1) + " km"
+                              : activeLayer === "habitat"
+                                ? cell.habitat
+                                  ? "Priority Habitat"
+                                  : "No priority habitat"
+                                : cell.suitability + "/100";
+          tooltipEl.style.display = "block";
+          tooltipEl.style.left = e.originalEvent.clientX + 12 + "px";
+          tooltipEl.style.top = e.originalEvent.clientY - 28 + "px";
+          tooltipEl.textContent = tip;
+          map.getContainer().style.cursor = "pointer";
+        } else {
+          tooltipEl.style.display = "none";
+          map.getContainer().style.cursor = "";
+        }
+      });
+
+      map.on("mouseout", function () {
+        tooltipEl.style.display = "none";
+      });
+
+      map.on("click", function (e) {
+        const cell = getCellAtLatLng(e.latlng);
+        if (!cell) return;
+
+        // Highlight
+        const hs = GRID_STEP / 2;
+        const bounds = [
+          [cell.lat - hs, cell.lng - hs],
+          [cell.lat + hs, cell.lng + hs],
+        ];
+        if (highlightRect) map.removeLayer(highlightRect);
+        highlightRect = L.rectangle(bounds, {
+          color: "#e8ecf4",
+          weight: 2,
+          fillColor: "transparent",
+          fillOpacity: 0,
+        }).addTo(map);
+
+        // Update sidebar
+        document.getElementById("cell-detail").classList.add("visible");
+        document.getElementById("cell-placeholder").style.display = "none";
+        document.getElementById("d-ref").textContent =
+          cell.lat.toFixed(3) +
+          "°N, " +
+          Math.abs(cell.lng).toFixed(3) +
+          "°" +
+          (cell.lng < 0 ? "W" : "E");
+        document.getElementById("d-wind").innerHTML =
+          cell.wind +
+          ' <span style="color:var(--text-muted);font-size:11px">m/s</span>';
+        document.getElementById("d-elev").innerHTML =
+          cell.elevation +
+          ' <span style="color:var(--text-muted);font-size:11px">m</span>';
+        document.getElementById("d-cf").innerHTML =
+          (cell.cf * 100).toFixed(1) +
+          ' <span style="color:var(--text-muted);font-size:11px">%</span>';
+        document.getElementById("d-lcoe").innerHTML =
+          "£" +
+          cell.lcoe +
+          ' <span style="color:var(--text-muted);font-size:11px">/MWh</span>';
+        document.getElementById("d-slope").innerHTML =
+          cell.slope +
+          ' <span style="color:var(--text-muted);font-size:11px">°</span>';
+        document.getElementById("d-co2").innerHTML =
+          cell.co2.toLocaleString() +
+          ' <span style="color:var(--text-muted);font-size:11px">tCO₂/yr</span>';
+        document.getElementById("d-resDist").innerHTML =
+          cell.resDist.toFixed(1) +
+          ' <span style="color:var(--text-muted);font-size:11px">km</span>';
+        document.getElementById("d-gridDist").innerHTML =
+          cell.gridDist.toFixed(1) +
+          ' <span style="color:var(--text-muted);font-size:11px">km</span>';
+        document.getElementById("d-habitat").innerHTML = cell.habitat
+          ? '<span style="color:var(--accent-red)">Priority Habitat</span>'
+          : '<span style="color:var(--accent-green)">None</span>';
+        const sc =
+          cell.suitability >= 75
+            ? "suit-high"
+            : cell.suitability >= 45
+              ? "suit-medium"
+              : "suit-low";
+        document.getElementById("d-suit").innerHTML =
+          '<span class="suitability-badge ' +
+          sc +
+          '">' +
+          cell.suitability +
+          " / 100</span>";
+
+        const cLabels = [];
+        if (cell.constraints & 1) cLabels.push("SSSI");
+        if (cell.constraints & 2) cLabels.push("National Park");
+        if (cell.constraints & 4) cLabels.push("AONB");
+        document.getElementById("d-constraints").innerHTML = cLabels.length
+          ? '<span style="color:var(--accent-red)">' +
+            cLabels.join(", ") +
+            "</span>"
+          : '<span style="color:var(--accent-green)">None</span>';
+      });
+
+      // ── Layer switching ──
+      function setLayer(layer) {
+        activeLayer = layer;
+        document
+          .querySelectorAll(".layer-btn")
+          .forEach((b) =>
+            b.classList.toggle("active", b.dataset.layer === layer),
+          );
+        // Re-render tiles
+        map.removeLayer(gridLayer);
+        gridLayer = new GridLayer({ opacity: 0.9 });
+        gridLayer.addTo(map);
+        updateLegend();
+      }
+
+      function updateLegend() {
+        const el = document.getElementById("legend");
+        if (activeLayer === "elevation") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(30,120,30,0.4)"></div>Lowland &lt;100m</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(80,160,60,0.6)"></div>Rolling 100–250m</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(170,100,40,0.8)"></div>Upland 250–500m</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(230,200,200,0.95)"></div>Highland &gt;500m</div>';
+        } else if (activeLayer === "wind") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(20,100,180,0.3)"></div>&lt;6.5 m/s</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(30,130,210,0.5)"></div>6.5–7.5 m/s</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(40,160,230,0.7)"></div>7.5–8.5 m/s</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(56,189,248,0.9)"></div>&gt;8.5 m/s</div>';
+        } else if (activeLayer === "cf") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(180,50,120,0.3)"></div>&lt;22% (low)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(200,70,140,0.5)"></div>22–28% (moderate)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(220,90,160,0.7)"></div>28–35% (good)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(244,114,182,0.9)"></div>&gt;35% (excellent)</div>';
+        } else if (activeLayer === "lcoe") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.6)"></div>&lt;£60/MWh (excellent)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(150,180,100,0.65)"></div>£60–70/MWh (good)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(220,140,80,0.7)"></div>£70–80/MWh (moderate)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(248,113,113,0.8)"></div>&gt;£80/MWh (poor)</div>';
+        } else if (activeLayer === "constraints") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.3)"></div>No constraints</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.75)"></div>SSSI</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,146,60,0.65)"></div>National Park</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,191,36,0.55)"></div>AONB</div>';
+        } else if (activeLayer === "slope") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.35)"></div>&lt;5° (flat)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,191,36,0.5)"></div>5–10° (moderate)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,146,60,0.7)"></div>10–15° (steep)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.85)"></div>&gt;15° (excluded)</div>';
+        } else if (activeLayer === "co2") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(200,120,80,0.35)"></div>&lt;850 t/yr</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(150,150,100,0.5)"></div>850–1,050 t/yr</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(100,180,120,0.65)"></div>1,050–1,300 t/yr</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.85)"></div>&gt;1,300 t/yr</div>';
+        } else if (activeLayer === "co2") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(200,120,80,0.35)"></div>&lt;850 t/yr</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(150,150,100,0.5)"></div>850–1,050 t/yr</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(100,180,120,0.65)"></div>1,050–1,300 t/yr</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.85)"></div>&gt;1,300 t/yr</div>';
+        } else if (activeLayer === "resDist") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.8)"></div>&lt;600m (excluded)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,146,60,0.6)"></div>600m–2km (setback)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.6)"></div>2–5km (ideal)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(100,140,200,0.5)"></div>&gt;5km (remote)</div>';
+        } else if (activeLayer === "gridDist") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(34,211,238,0.4)"></div>&lt;15km (excellent)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(100,180,200,0.5)"></div>15–30km (good)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(170,140,160,0.6)"></div>30–50km (moderate)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(234,111,138,0.75)"></div>&gt;50km (poor)</div>';
+        } else if (activeLayer === "habitat") {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(74,222,128,0.3)"></div>No priority habitat</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.7)"></div>Priority habitat (BNG required)</div>';
+        } else {
+          el.innerHTML =
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(248,113,113,0.3)"></div>Low &lt;45</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,191,36,0.4)"></div>Medium 45–74</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.55)"></div>High 75–89</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(52,211,153,0.85)"></div>Excellent 90+</div>';
+        }
+      }
+
+      updateLegend();
+    </script>
+  </body>
+</html>
