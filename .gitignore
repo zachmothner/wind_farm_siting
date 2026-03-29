@@ -11,3 +11,5 @@ priority_habitats.json
 sssi_boundaries.json
 wind_samples_cache.json
 .DS_Store
+carbon_intensity_2024_regional.json
+england-wales-2024.nc

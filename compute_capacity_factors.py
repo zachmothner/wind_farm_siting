@@ -36,8 +36,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ── Configuration ──
-CUTOUT_PATH = "england-wales-2023.nc"
-CUTOUT_YEAR = "2023"                     # Full year for annual mean
+CUTOUT_PATH = "england-wales-2024.nc"
+CUTOUT_YEAR = "2024"                     # Full year for annual mean
 CUTOUT_X = slice(-6.0, 2.0)             # Longitude bounds (with buffer)
 CUTOUT_Y = slice(49.5, 56.0)            # Latitude bounds (with buffer)
 TURBINE = "Vestas_V90_3MW"             # 2 MW onshore turbine (atlite built-in)
