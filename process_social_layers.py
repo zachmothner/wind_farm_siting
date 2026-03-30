@@ -263,7 +263,7 @@ def fetch_priority_habitats():
     while offset < max_features:
         params = (
             f"?where=1%3D1"
-            f"&outFields=OBJECTID"
+            f"&outFields=OBJECTID,MainHabs"
             f"&outSR=4326"
             f"&f=geojson"
             f"&resultOffset={offset}"
@@ -378,27 +378,106 @@ def point_in_habitat(lat, lng, feature):
     return False
 
 
-def flag_habitat_cells(cells, features, spatial_index):
-    """Flag cells that overlap priority habitats."""
-    index_step = 0.1
-    flagged = set()
+# DEFRA Biodiversity Metric 4.0 distinctiveness scores
+# Mapped from PHI MainHabs field to 0-8 scale
+HABITAT_SCORES = {
+    # Very High - Irreplaceable (8)
+    "Lowland beech and yew woodland": 8,
+    # Very High (6)
+    "Blanket bog": 6,
+    "Lowland raised bog": 6,
+    "Limestone pavement": 6,
+    "Calaminarian grassland": 6,
+    "Upland calcareous grassland": 6,
+    "Lowland calcareous grassland": 6,
+    # High (5)
+    "Lowland heathland": 5,
+    "Upland heathland": 5,
+    "Purple moor grass and rush pastures": 5,
+    "Upland hay meadow": 5,
+    "Lowland meadows": 5,
+    "Lowland dry acid grassland": 5,
+    # High (4)
+    "Coastal saltmarsh": 4,
+    "Reedbeds": 4,
+    "Saline lagoons": 4,
+    "Maritime cliff and slopes": 4,
+    "Coastal sand dunes": 4,
+    "Coastal vegetated shingle": 4,
+    "Mudflats": 4,
+    "Coastal and floodplain grazing marsh": 4,
+    "Fens": 4,
+    # Medium (3)
+    "Floodplain grazing marsh": 3,
+    "Hedgerows": 3,
+    "Wet woodland": 3,
+    "Upland oakwood": 3,
+    "Lowland mixed deciduous woodland": 3,
+    "Upland mixed ashwoods": 3,
+    "Wood-pasture and parkland": 3,
+    "Traditional orchard": 3,
+    # Low-Medium (2)
+    "Good quality semi-improved grassland": 2,
+    "Grass moorland": 2,
+    "Fragmented heath": 2,
+    "No main habitat but additional habitats present": 2,
+    "Deciduous woodland": 2,
+    # Default for any unrecognised type
+    "DEFAULT": 1,
+}
 
-    print(f"  Checking {len(cells)} cells against {len(features)} habitat features...")
+def get_habitat_score(main_habs):
+    """Look up the distinctiveness score for a habitat type."""
+    if not main_habs:
+        return 0
+    # Try exact match first
+    if main_habs in HABITAT_SCORES:
+        return HABITAT_SCORES[main_habs]
+    # Try case-insensitive partial match
+    main_lower = main_habs.lower()
+    for key, score in HABITAT_SCORES.items():
+        if key.lower() in main_lower or main_lower in key.lower():
+            return score
+    return HABITAT_SCORES["DEFAULT"]
+
+
+def score_habitat_cells(cells, features, spatial_index):
+    """Score cells by habitat distinctiveness instead of binary flagging."""
+    index_step = 0.1
+    scores = {}
+
+    print(f"  Scoring {len(cells)} cells against {len(features)} habitat features...")
 
     for i, (lat, lng) in enumerate(cells):
         ikey = (int(lat / index_step), int(lng / index_step))
         candidates = spatial_index.get(ikey, [])
 
+        best_score = 0
         for fi in candidates:
             if point_in_habitat(lat, lng, features[fi]):
-                flagged.add((lat, lng))
-                break
+                hab_type = features[fi].get("properties", {}).get("MainHabs", "")
+                score = get_habitat_score(hab_type)
+                if score > best_score:
+                    best_score = score
+                if best_score >= 6:
+                    break  # Can't get higher than this practically
+
+        if best_score > 0:
+            scores[(lat, lng)] = best_score
 
         if (i + 1) % 50000 == 0:
-            print(f"    {i + 1}/{len(cells)} checked, {len(flagged)} in priority habitat")
+            print(f"    {i + 1}/{len(cells)} checked, {len(scores)} in priority habitat")
 
-    print(f"    Done: {len(flagged)} cells in priority habitat ({len(flagged)/len(cells)*100:.1f}%)")
-    return flagged
+    print(f"    Done: {len(scores)} cells scored")
+
+    # Print distribution
+    dist = {}
+    for s in scores.values():
+        dist[s] = dist.get(s, 0) + 1
+    for s in sorted(dist):
+        print(f"      Score {s}: {dist[s]} cells")
+
+    return scores
 
 
 # ═══════════════════════════════════════════════
@@ -527,7 +606,7 @@ def compute_fuel_poverty_scores(cells, lsoa_features, fp_data):
 # ═══════════════════════════════════════════════
 
 def save_output(cells, existing_data, cf_data, co2_data,
-                res_distances, grid_distances, habitat_cells,
+                res_distances, grid_distances, habitat_scores,
                 fp_scores, constraint_data):
     """Write updated grid_data_embedded.js with all layers."""
 
@@ -554,7 +633,7 @@ def save_output(cells, existing_data, cf_data, co2_data,
             constraints = constraint_data.get((lat, lng), 0)
             res_dist = res_distances.get((lat, lng), 99)
             grid_dist = grid_distances.get((lat, lng), 99)
-            habitat = 1 if (lat, lng) in habitat_cells else 0
+            habitat = habitat_scores.get((lat, lng), 0)
             fp = fp_scores.get((lat, lng), 0)
 
             # Format: [lat, lng, elev, wind*10, cf*1000, constraints, co2, res_dist*10, grid_dist*10, habitat, fp*10]
@@ -742,9 +821,9 @@ def main():
     phi_features = fetch_priority_habitats()
     if phi_features:
         phi_index = build_habitat_spatial_index(phi_features)
-        habitat_cells = flag_habitat_cells(cells, phi_features, phi_index)
+        habitat_scores = score_habitat_cells(cells, phi_features, phi_index)
     else:
-        habitat_cells = set()
+        habitat_scores = {}
         print("  No habitat data available, skipping")
 
     # Layer 4: Fuel poverty
@@ -755,7 +834,7 @@ def main():
     # Save
     print("\n[6/6] Saving output...")
     save_output(cells, existing_data, cf_data, co2_data,
-                res_distances, grid_distances, habitat_cells,
+                res_distances, grid_distances, habitat_scores,
                 fp_scores, constraint_data)
 
     # Summary
@@ -763,7 +842,10 @@ def main():
     print("Summary:")
     print(f"  Residential proximity: {min(res_distances.values()):.1f}–{max(res_distances.values()):.1f} km")
     print(f"  Grid connection proximity: {min(grid_distances.values()):.1f}–{max(grid_distances.values()):.1f} km")
-    print(f"  Priority habitat cells: {len(habitat_cells)} ({len(habitat_cells)/len(cells)*100:.1f}%)")
+    print(f"  Priority habitat cells: {len(habitat_scores)} ({len(habitat_scores)/len(cells)*100:.1f}%)")
+    if habitat_scores:
+        score_vals = list(habitat_scores.values())
+        print(f"  Habitat scores: min={min(score_vals)}, max={max(score_vals)}, mean={sum(score_vals)/len(score_vals):.1f}")
     if fp_scores:
         fp_vals = list(fp_scores.values())
         print(f"  Fuel poverty rates: {min(fp_vals):.1f}–{max(fp_vals):.1f}%")

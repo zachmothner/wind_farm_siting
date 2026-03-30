@@ -1016,8 +1016,11 @@
         return [r, g, b, a];
       }
       function habitatColorRGB(v) {
-        if (v === 1) return [239, 68, 68, 0.7]; // red = priority habitat present
-        return [74, 222, 128, 0.25]; // green = no priority habitat
+        if (v === 0) return [74, 222, 128, 0.2]; // green = no habitat
+        if (v <= 2) return [251, 191, 36, 0.45]; // amber = low
+        if (v <= 4) return [251, 146, 60, 0.6]; // orange = medium-high
+        if (v <= 6) return [239, 68, 68, 0.75]; // red = very high
+        return [180, 30, 30, 0.9]; // dark red = irreplaceable
       }
 
       let activeLayer = "elevation";
@@ -1175,7 +1178,7 @@
                               ? cell.gridDist.toFixed(1) + " km"
                               : activeLayer === "habitat"
                                 ? cell.habitat
-                                  ? "Priority Habitat"
+                                  ? "Score: " + cell.habitat + "/8"
                                   : "No priority habitat"
                                 : cell.suitability + "/100";
           tooltipEl.style.display = "block";
@@ -1246,7 +1249,15 @@
           cell.gridDist.toFixed(1) +
           ' <span style="color:var(--text-muted);font-size:11px">km</span>';
         document.getElementById("d-habitat").innerHTML = cell.habitat
-          ? '<span style="color:var(--accent-red)">Priority Habitat</span>'
+          ? '<span style="color:' +
+            (cell.habitat >= 6
+              ? "var(--accent-red)"
+              : cell.habitat >= 3
+                ? "#fb923c"
+                : "#fbbf24") +
+            '">' +
+            cell.habitat +
+            "/8 distinctiveness</span>"
           : '<span style="color:var(--accent-green)">None</span>';
         const sc =
           cell.suitability >= 75
@@ -1351,8 +1362,11 @@
             '<div class="legend-item"><div class="legend-swatch" style="background:rgba(234,111,138,0.75)"></div>&gt;50km (poor)</div>';
         } else if (activeLayer === "habitat") {
           el.innerHTML =
-            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(74,222,128,0.3)"></div>No priority habitat</div>' +
-            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.7)"></div>Priority habitat (BNG required)</div>';
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(74,222,128,0.25)"></div>No priority habitat (0)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,191,36,0.45)"></div>Low distinctiveness (1\u20132)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(251,146,60,0.6)"></div>Medium\u2013High (3\u20134)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.75)"></div>Very High (5\u20136)</div>' +
+            '<div class="legend-item"><div class="legend-swatch" style="background:rgba(180,30,30,0.9)"></div>Irreplaceable (7\u20138)</div>';
         } else {
           el.innerHTML =
             '<div class="legend-item"><div class="legend-swatch" style="background:rgba(248,113,113,0.3)"></div>Low &lt;45</div>' +
