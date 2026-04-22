@@ -1236,6 +1236,15 @@
           "£" +
           cell.lcoe +
           ' <span style="color:var(--text-muted);font-size:11px">/MWh</span>';
+        const cLabels = [];
+        if (cell.constraints & 1) cLabels.push("SSSI");
+        if (cell.constraints & 2) cLabels.push("National Park");
+        if (cell.constraints & 4) cLabels.push("AONB");
+        document.getElementById("d-constraints").innerHTML = cLabels.length
+          ? '<span style="color:var(--accent-red)">' +
+            cLabels.join(", ") +
+            "</span>"
+          : '<span style="color:var(--accent-green)">None</span>';
         document.getElementById("d-slope").innerHTML =
           cell.slope +
           ' <span style="color:var(--text-muted);font-size:11px">°</span>';
@@ -1265,22 +1274,12 @@
             : cell.suitability >= 45
               ? "suit-medium"
               : "suit-low";
-        document.getElementById("d-suit").innerHTML =
-          '<span class="suitability-badge ' +
-          sc +
-          '">' +
-          cell.suitability +
-          " / 100</span>";
-
-        const cLabels = [];
-        if (cell.constraints & 1) cLabels.push("SSSI");
-        if (cell.constraints & 2) cLabels.push("National Park");
-        if (cell.constraints & 4) cLabels.push("AONB");
-        document.getElementById("d-constraints").innerHTML = cLabels.length
-          ? '<span style="color:var(--accent-red)">' +
-            cLabels.join(", ") +
-            "</span>"
-          : '<span style="color:var(--accent-green)">None</span>';
+        // document.getElementById("d-suit").innerHTML =
+        //   '<span class="suitability-badge ' +
+        //   sc +
+        //   '">' +
+        //   cell.suitability +
+        //   " / 100</span>";
       });
 
       // ── Layer switching ──
