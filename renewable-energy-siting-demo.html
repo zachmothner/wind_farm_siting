@@ -9,6 +9,7 @@
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/d3@7/dist/d3.min.js"></script>
     <link
       href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
@@ -314,9 +315,46 @@
         pointer-events: none;
         transition: opacity 0.3s;
       }
+      #radial-tooltip {
+        position: fixed;
+        left: 0;
+        top: 0;
+        pointer-events: none;
+        z-index: 2001;
+        display: none;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        font-family: "DM Sans", sans-serif;
+      }
+      #radial-tooltip.glow-green {
+        border-color: var(--accent-green);
+        box-shadow: 0 0 16px rgba(52, 211, 153, 0.25), 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+      #radial-svg text {
+        font-family: "JetBrains Mono", monospace;
+      }
+      #tier-warning {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 4px 8px;
+        border-radius: 6px;
+        margin-top: 4px;
+      }
+      .tw-red { background: rgba(248,113,113,0.15); color: var(--accent-red); }
+      .tw-amber { background: rgba(251,191,36,0.15); color: var(--accent-yellow); }
+      .tw-green { background: rgba(52,211,153,0.15); color: var(--accent-green); }
       @media (max-width: 900px) {
         .sidebar {
           display: none;
+        }
+        #radial-tooltip {
+          display: none !important;
         }
       }
     </style>
@@ -382,19 +420,23 @@
         >
           Biodiversity
         </button>
-        <!-- <button
+        <button
           class="layer-btn"
           data-layer="suitability"
           onclick="setLayer('suitability')"
         >
           Suitability
-        </button> -->
+        </button>
       </div>
     </header>
 
     <div class="main-container">
       <div id="map"></div>
       <div id="tooltip"></div>
+      <div id="radial-tooltip">
+        <svg id="radial-svg" width="260" height="260"></svg>
+        <div id="tier-warning"></div>
+      </div>
       <div class="sidebar">
         <h2>Overview</h2>
         <div class="stat-card">
@@ -456,10 +498,18 @@
               <span class="dlabel">Priority Habitat</span
               ><span class="dvalue" id="d-habitat">—</span>
             </div>
-            <!-- <div class="detail-row">
+            <div class="detail-row">
               <span class="dlabel">Suitability</span
               ><span class="dvalue" id="d-suit">—</span>
-            </div> -->
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">Economic (T1)</span
+              ><span class="dvalue" id="d-t1">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="dlabel">SDG Impact (T2)</span
+              ><span class="dvalue" id="d-t2">—</span>
+            </div>
           </div>
         </div>
         <div
@@ -908,6 +958,10 @@
         const resDist = real ? real.resDist || 0 : 0;
         const gridDist = real ? real.gridDist || 0 : 0;
         const habitat = real ? real.habitat || 0 : 0;
+        const fuelPoverty = real ? real.fuelPoverty || 0 : 0;
+        const t1Status = real ? real.t1Status || 0 : 0;
+        const t2Status = real ? real.t2Status || 0 : 0;
+        const suitability = real ? real.suitScore || 0 : 0;
 
         return {
           lat,
@@ -922,6 +976,10 @@
           resDist,
           gridDist,
           habitat,
+          fuelPoverty,
+          t1Status,
+          t2Status,
+          suitability,
         };
       }
 
@@ -1023,6 +1081,192 @@
         return [180, 30, 30, 0.9]; // dark red = irreplaceable
       }
 
+      // ── Tier unpacking ──
+      function unpackTier1(packed) {
+        const c = [];
+        let v = packed;
+        for (let i = 0; i < 6; i++) { c.push(v % 3); v = Math.floor(v / 3); }
+        return c; // [cf, lcoe, wind, gridDist, slope, elev]
+      }
+      function unpackTier2(packed) {
+        const c = [];
+        let v = packed;
+        for (let i = 0; i < 5; i++) { c.push(v % 3); v = Math.floor(v / 3); }
+        return c; // [protected, habitat, resDist, co2, fuelPov]
+      }
+
+      const TIER_COLORS = ['#f87171', '#fbbf24', '#34d399']; // red, amber, green
+
+      const METRICS = [
+        { key: 'cf', label: 'CF', tier: 1, min: 0.15, max: 0.50, unit: '%', fmt: v => (v*100).toFixed(0)+'%' },
+        { key: 'lcoe', label: 'LCOE', tier: 1, min: 35, max: 100, invert: true, unit: '£', fmt: v => '£'+v.toFixed(0) },
+        { key: 'wind', label: 'Wind', tier: 1, min: 4, max: 12, unit: 'm/s', fmt: v => v.toFixed(1) },
+        { key: 'gridDist', label: 'Grid', tier: 1, min: 0, max: 60, invert: true, unit: 'km', fmt: v => v.toFixed(0)+'km' },
+        { key: 'slope', label: 'Slope', tier: 1, min: 0, max: 25, invert: true, unit: '°', fmt: v => v.toFixed(0)+'°' },
+        { key: 'elevation', label: 'Elev', tier: 1, min: 0, max: 800, invert: true, unit: 'm', fmt: v => v.toFixed(0)+'m' },
+        { key: 'constraints', label: 'Prot', tier: 2, special: 'binary', fmt: v => v === 0 ? 'None' : '!' },
+        { key: 'habitat', label: 'Hab', tier: 2, min: 0, max: 8, invert: true, fmt: v => v+'/8' },
+        { key: 'resDist', label: 'Res', tier: 2, min: 0, max: 5, unit: 'km', fmt: v => v.toFixed(1)+'km' },
+        { key: 'co2', label: 'CO₂', tier: 2, min: 0, max: 2000, unit: 't', fmt: v => v.toFixed(0) },
+        { key: 'fuelPoverty', label: 'FP', tier: 2, min: 0, max: 30, unit: '%', fmt: v => v.toFixed(0)+'%' },
+      ];
+
+      const T1_LABELS = ['CF','LCOE','Wind','Grid','Slope','Elev'];
+      const T2_LABELS = ['Prot','Hab','Res','CO₂','FP'];
+
+      // ── D3 Radial Chart ──
+      let radialChart = null;
+      const radialTooltipEl = document.getElementById('radial-tooltip');
+      const radialSvg = d3.select('#radial-svg');
+      const tierWarningEl = document.getElementById('tier-warning');
+
+      function initRadialChart() {
+        if (typeof d3 === 'undefined') return null;
+
+        const W = 260, H = 260, cx = W/2, cy = H/2;
+        const innerR = 36, maxOuterR = 115;
+        const nMetrics = METRICS.length;
+        const gap = 0.035; // radians gap between arcs
+        const arcSpan = (2 * Math.PI / nMetrics) - gap;
+
+        const g = radialSvg.append('g').attr('transform', `translate(${cx},${cy})`);
+
+        // Tier divider (subtle line between T1 and T2 arcs)
+        const dividerAngle = 6 * (2 * Math.PI / nMetrics) - gap/2;
+        g.append('line')
+          .attr('x1', Math.cos(dividerAngle - Math.PI/2) * (innerR - 4))
+          .attr('y1', Math.sin(dividerAngle - Math.PI/2) * (innerR - 4))
+          .attr('x2', Math.cos(dividerAngle - Math.PI/2) * (maxOuterR + 4))
+          .attr('y2', Math.sin(dividerAngle - Math.PI/2) * (maxOuterR + 4))
+          .attr('stroke', '#2a3550')
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', '3,3');
+
+        // Tier labels
+        const t1Mid = 3 * (2 * Math.PI / nMetrics) - Math.PI/2;
+        const t2Mid = (6 + 2.5) * (2 * Math.PI / nMetrics) - Math.PI/2;
+        g.append('text')
+          .attr('x', Math.cos(t1Mid) * (maxOuterR + 14))
+          .attr('y', Math.sin(t1Mid) * (maxOuterR + 14))
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#8892a8')
+          .attr('font-size', '8px')
+          .text('ECONOMIC');
+        g.append('text')
+          .attr('x', Math.cos(t2Mid) * (maxOuterR + 14))
+          .attr('y', Math.sin(t2Mid) * (maxOuterR + 14))
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#8892a8')
+          .attr('font-size', '8px')
+          .text('SDG');
+
+        const arcGen = d3.arc().innerRadius(innerR).cornerRadius(2);
+
+        const arcs = g.selectAll('.radial-arc')
+          .data(METRICS)
+          .enter()
+          .append('path')
+          .attr('class', 'radial-arc')
+          .style('transition', 'fill 0.15s');
+
+        const labels = g.selectAll('.radial-label')
+          .data(METRICS)
+          .enter()
+          .append('text')
+          .attr('class', 'radial-label')
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#8892a8')
+          .attr('font-size', '9px');
+
+        // Center score
+        const scoreText = g.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central')
+          .attr('fill', '#e8ecf4')
+          .attr('font-size', '22px')
+          .attr('font-weight', '700');
+
+        const scoreLabel = g.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('y', 16)
+          .attr('fill', '#8892a8')
+          .attr('font-size', '8px')
+          .text('SCORE');
+
+        return {
+          update(cell) {
+            const t1 = unpackTier1(cell.t1Status);
+            const t2 = unpackTier2(cell.t2Status);
+            const allClasses = [...t1, ...t2];
+            const t1HasRed = t1.some(c => c === 0);
+
+            arcs.each(function(d, i) {
+              const cls = allClasses[i];
+              let norm;
+              if (d.special === 'binary') {
+                norm = cell[d.key] === 0 ? 1 : 0.15;
+              } else {
+                const raw = cell[d.key] || 0;
+                const range = d.max - d.min;
+                norm = Math.max(0.08, Math.min(1, (raw - d.min) / range));
+                if (d.invert) norm = Math.max(0.08, 1 - norm);
+              }
+
+              const startAngle = i * (arcSpan + gap);
+              const endAngle = startAngle + arcSpan;
+              const outerR = innerR + (maxOuterR - innerR) * norm;
+
+              const dimmed = (d.tier === 2 && t1HasRed);
+              const opacity = dimmed ? 0.2 : 0.85;
+
+              d3.select(this)
+                .attr('d', arcGen({ startAngle, endAngle, outerRadius: outerR }))
+                .attr('fill', TIER_COLORS[cls])
+                .attr('opacity', opacity);
+            });
+
+            labels.each(function(d, i) {
+              const midAngle = i * (arcSpan + gap) + arcSpan / 2 - Math.PI / 2;
+              const labelR = maxOuterR + 10;
+              d3.select(this)
+                .attr('x', Math.cos(midAngle) * labelR)
+                .attr('y', Math.sin(midAngle) * labelR)
+                .attr('dominant-baseline', 'central')
+                .text(d.label);
+            });
+
+            scoreText.text(cell.suitability).attr('y', -4);
+
+            // Warning badge
+            if (t1HasRed) {
+              const redMetrics = t1.map((c, i) => c === 0 ? T1_LABELS[i] : null).filter(Boolean);
+              tierWarningEl.className = 'tw-red';
+              tierWarningEl.textContent = 'Unviable: ' + redMetrics.join(', ');
+            } else if (t2.some(c => c === 0)) {
+              const redMetrics = t2.map((c, i) => c === 0 ? T2_LABELS[i] : null).filter(Boolean);
+              tierWarningEl.className = 'tw-amber';
+              tierWarningEl.textContent = 'SDG concern: ' + redMetrics.join(', ');
+            } else {
+              tierWarningEl.className = 'tw-green';
+              tierWarningEl.textContent = 'Viable';
+            }
+
+            // Glow effect for excellent scores
+            radialTooltipEl.classList.toggle('glow-green', cell.suitability >= 85);
+          }
+        };
+      }
+
+      function positionRadialTooltip(x, y) {
+        const w = 282, h = 310;
+        let tx = x + 18;
+        let ty = y - h / 2;
+        if (tx + w > window.innerWidth) tx = x - w - 18;
+        if (ty < 0) ty = 4;
+        if (ty + h > window.innerHeight) ty = window.innerHeight - h - 4;
+        radialTooltipEl.style.transform = `translate(${tx}px,${ty}px)`;
+      }
+
       let activeLayer = "elevation";
       function getCellColor(cell) {
         if (activeLayer === "elevation") return elevColorRGB(cell.elevation);
@@ -1038,6 +1282,9 @@
         if (activeLayer === "habitat") return habitatColorRGB(cell.habitat);
         return suitColorRGB(cell.suitability);
       }
+
+      // Init radial chart after DOM ready
+      radialChart = initRadialChart();
 
       // ── Map setup ──
       const map = L.map("map", {
@@ -1149,51 +1396,70 @@
         return generateCellData(cellLat, cellLng);
       }
 
-      map.on("mousemove", function (e) {
+      let lastHoverKey = '';
+      let rafId = null;
+      let pendingMouseEvent = null;
+
+      function getTipText(cell) {
+        switch (activeLayer) {
+          case 'elevation': return cell.elevation + ' m';
+          case 'wind': return cell.wind + ' m/s';
+          case 'cf': return (cell.cf * 100).toFixed(1) + '%';
+          case 'lcoe': return '£' + cell.lcoe + '/MWh';
+          case 'constraints':
+            return cell.constraints === 0 ? 'No constraints'
+              : ((cell.constraints & 1 ? 'SSSI ' : '') + (cell.constraints & 2 ? 'National Park ' : '') + (cell.constraints & 4 ? 'AONB' : '')).trim();
+          case 'slope': return cell.slope + '°';
+          case 'co2': return cell.co2.toLocaleString() + ' t/yr';
+          case 'resDist': return cell.resDist.toFixed(1) + ' km';
+          case 'gridDist': return cell.gridDist.toFixed(1) + ' km';
+          case 'habitat': return cell.habitat ? 'Score: ' + cell.habitat + '/8' : 'No priority habitat';
+          default: return cell.suitability + '/100';
+        }
+      }
+
+      function handleMouseMove() {
+        rafId = null;
+        const e = pendingMouseEvent;
+        if (!e) return;
+
         const cell = getCellAtLatLng(e.latlng);
         if (cell) {
-          const tip =
-            activeLayer === "elevation"
-              ? cell.elevation + " m"
-              : activeLayer === "wind"
-                ? cell.wind + " m/s"
-                : activeLayer === "cf"
-                  ? (cell.cf * 100).toFixed(1) + "%"
-                  : activeLayer === "lcoe"
-                    ? "£" + cell.lcoe + "/MWh"
-                    : activeLayer === "constraints"
-                      ? (cell.constraints === 0
-                          ? "No constraints"
-                          : (cell.constraints & 1 ? "SSSI" : "") +
-                            (cell.constraints & 2 ? " National Park" : "") +
-                            (cell.constraints & 4 ? " AONB" : "")
-                        ).trim()
-                      : activeLayer === "slope"
-                        ? cell.slope + "°"
-                        : activeLayer === "co2"
-                          ? cell.co2.toLocaleString() + " t/yr"
-                          : activeLayer === "resDist"
-                            ? cell.resDist.toFixed(1) + " km"
-                            : activeLayer === "gridDist"
-                              ? cell.gridDist.toFixed(1) + " km"
-                              : activeLayer === "habitat"
-                                ? cell.habitat
-                                  ? "Score: " + cell.habitat + "/8"
-                                  : "No priority habitat"
-                                : cell.suitability + "/100";
-          tooltipEl.style.display = "block";
-          tooltipEl.style.left = e.originalEvent.clientX + 12 + "px";
-          tooltipEl.style.top = e.originalEvent.clientY - 28 + "px";
-          tooltipEl.textContent = tip;
-          map.getContainer().style.cursor = "pointer";
+          const key = cell.lat + ',' + cell.lng;
+
+          // Text tooltip
+          tooltipEl.style.display = 'block';
+          tooltipEl.style.left = e.originalEvent.clientX + 12 + 'px';
+          tooltipEl.style.top = e.originalEvent.clientY - 28 + 'px';
+          tooltipEl.textContent = getTipText(cell);
+          map.getContainer().style.cursor = 'pointer';
+
+          // Radial chart
+          if (radialChart) {
+            positionRadialTooltip(e.originalEvent.clientX, e.originalEvent.clientY);
+            if (key !== lastHoverKey) {
+              lastHoverKey = key;
+              radialChart.update(cell);
+            }
+            radialTooltipEl.style.display = 'block';
+          }
         } else {
-          tooltipEl.style.display = "none";
-          map.getContainer().style.cursor = "";
+          tooltipEl.style.display = 'none';
+          if (radialChart) radialTooltipEl.style.display = 'none';
+          map.getContainer().style.cursor = '';
+          lastHoverKey = '';
         }
+      }
+
+      map.on('mousemove', function (e) {
+        pendingMouseEvent = e;
+        if (!rafId) rafId = requestAnimationFrame(handleMouseMove);
       });
 
-      map.on("mouseout", function () {
-        tooltipEl.style.display = "none";
+      map.on('mouseout', function () {
+        tooltipEl.style.display = 'none';
+        if (radialChart) radialTooltipEl.style.display = 'none';
+        lastHoverKey = '';
       });
 
       map.on("click", function (e) {
@@ -1274,12 +1540,33 @@
             : cell.suitability >= 45
               ? "suit-medium"
               : "suit-low";
-        // document.getElementById("d-suit").innerHTML =
-        //   '<span class="suitability-badge ' +
-        //   sc +
-        //   '">' +
-        //   cell.suitability +
-        //   " / 100</span>";
+        document.getElementById("d-suit").innerHTML =
+          '<span class="suitability-badge ' +
+          sc +
+          '">' +
+          cell.suitability +
+          " / 100</span>";
+
+        // Two-tier breakdown
+        const t1c = unpackTier1(cell.t1Status);
+        const t2c = unpackTier2(cell.t2Status);
+        const t1HasRed = t1c.some(c => c === 0);
+
+        const t1Dots = t1c.map((c, i) => '<span title="' + T1_LABELS[i] + '" style="color:' + TIER_COLORS[c] + '">●</span>').join(' ');
+        const t1Label = t1HasRed
+          ? '<span style="color:var(--accent-red)">Fail</span>'
+          : t1c.some(c => c === 1)
+            ? '<span style="color:var(--accent-yellow)">Marginal</span>'
+            : '<span style="color:var(--accent-green)">Pass</span>';
+        document.getElementById("d-t1").innerHTML = t1Dots + ' ' + t1Label;
+
+        const t2Dots = t2c.map((c, i) => '<span title="' + T2_LABELS[i] + '" style="color:' + TIER_COLORS[c] + '">●</span>').join(' ');
+        const t2Label = t2c.some(c => c === 0)
+          ? '<span style="color:var(--accent-red)">Concern</span>'
+          : t2c.some(c => c === 1)
+            ? '<span style="color:var(--accent-yellow)">Moderate</span>'
+            : '<span style="color:var(--accent-green)">Good</span>';
+        document.getElementById("d-t2").innerHTML = t2Dots + ' ' + t2Label;
       });
 
       // ── Layer switching ──
